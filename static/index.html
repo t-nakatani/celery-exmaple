@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Celery FastAPI Example</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        .task-form {
+            background-color: #f5f5f5;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="number"], input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .task-list {
+            margin-top: 30px;
+        }
+        .task-item {
+            background-color: #f9f9f9;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 4px solid #4CAF50;
+            border-radius: 2px;
+        }
+        .task-status {
+            font-weight: bold;
+        }
+        .status-pending {
+            color: #ff9800;
+        }
+        .status-success {
+            color: #4CAF50;
+        }
+        .status-failure {
+            color: #f44336;
+        }
+        .task-result {
+            margin-top: 10px;
+            font-family: monospace;
+            background-color: #eee;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+        .task-actions {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Celery FastAPI Example</h1>
+    
+    <div class="task-forms">
+        <h2>Submit Tasks</h2>
+        
+        <div class="task-form">
+            <h3>Addition Task</h3>
+            <div class="form-group">
+                <label for="add-x">X:</label>
+                <input type="number" id="add-x" value="4">
+            </div>
+            <div class="form-group">
+                <label for="add-y">Y:</label>
+                <input type="number" id="add-y" value="5">
+            </div>
+            <button onclick="submitAddTask()">Submit Addition Task</button>
+        </div>
+        
+        <div class="task-form">
+            <h3>Long Running Task</h3>
+            <div class="form-group">
+                <label for="long-seconds">Seconds:</label>
+                <input type="number" id="long-seconds" value="3">
+            </div>
+            <button onclick="submitLongTask()">Submit Long Task</button>
+        </div>
+        
+        <div class="task-form">
+            <h3>Process Data Task</h3>
+            <div class="form-group">
+                <label for="process-data">Data (comma-separated numbers):</label>
+                <input type="text" id="process-data" value="1,2,3,4,5,6,7,8,9,10">
+            </div>
+            <button onclick="submitProcessTask()">Submit Process Task</button>
+        </div>
+    </div>
+    
+    <div class="task-list">
+        <h2>Task Results</h2>
+        <div id="tasks-container"></div>
+    </div>
+    
+    <script>
+        // Store tasks
+        const tasks = [];
+        
+        // API base URL
+        const API_BASE_URL = 'http://localhost:8000';
+        
+        // Function to submit addition task
+        async function submitAddTask() {
+            const x = parseInt(document.getElementById('add-x').value);
+            const y = parseInt(document.getElementById('add-y').value);
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/tasks/add`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ x, y })
+                });
+                
+                const data = await response.json();
+                addTask(data.task_id, 'Addition', `${x} + ${y}`);
+                pollTaskStatus(data.task_id);
+            } catch (error) {
+                console.error('Error submitting addition task:', error);
+            }
+        }
+        
+        // Function to submit long running task
+        async function submitLongTask() {
+            const seconds = parseInt(document.getElementById('long-seconds').value);
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/tasks/long`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ seconds })
+                });
+                
+                const data = await response.json();
+                addTask(data.task_id, 'Long Running', `Wait for ${seconds} seconds`);
+                pollTaskStatus(data.task_id);
+            } catch (error) {
+                console.error('Error submitting long task:', error);
+            }
+        }
+        
+        // Function to submit process data task
+        async function submitProcessTask() {
+            const dataStr = document.getElementById('process-data').value;
+            const data = dataStr.split(',').map(num => parseInt(num.trim()));
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/tasks/process`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ data })
+                });
+                
+                const responseData = await response.json();
+                addTask(responseData.task_id, 'Process Data', `Process [${data}]`);
+                pollTaskStatus(responseData.task_id);
+            } catch (error) {
+                console.error('Error submitting process task:', error);
+            }
+        }
+        
+        // Function to add a task to the UI
+        function addTask(taskId, type, description) {
+            const task = {
+                id: taskId,
+                type,
+                description,
+                status: 'PENDING',
+                result: null
+            };
+            
+            tasks.push(task);
+            renderTasks();
+        }
+        
+        // Function to poll task status
+        async function pollTaskStatus(taskId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`);
+                const data = await response.json();
+                
+                // Update task in the list
+                const taskIndex = tasks.findIndex(t => t.id === taskId);
+                if (taskIndex !== -1) {
+                    tasks[taskIndex].status = data.status;
+                    tasks[taskIndex].result = data.result;
+                    renderTasks();
+                }
+                
+                // Continue polling if task is not complete
+                if (data.status === 'PENDING' || data.status === 'STARTED') {
+                    setTimeout(() => pollTaskStatus(taskId), 1000);
+                }
+            } catch (error) {
+                console.error(`Error polling task ${taskId}:`, error);
+            }
+        }
+        
+        // Function to revoke a task
+        async function revokeTask(taskId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                console.log(data.message);
+                
+                // Update task in the list
+                const taskIndex = tasks.findIndex(t => t.id === taskId);
+                if (taskIndex !== -1) {
+                    tasks[taskIndex].status = 'REVOKED';
+                    renderTasks();
+                }
+            } catch (error) {
+                console.error(`Error revoking task ${taskId}:`, error);
+            }
+        }
+        
+        // Function to render tasks
+        function renderTasks() {
+            const container = document.getElementById('tasks-container');
+            container.innerHTML = '';
+            
+            if (tasks.length === 0) {
+                container.innerHTML = '<p>No tasks submitted yet.</p>';
+                return;
+            }
+            
+            // Sort tasks with newest first
+            const sortedTasks = [...tasks].reverse();
+            
+            sortedTasks.forEach(task => {
+                const taskElement = document.createElement('div');
+                taskElement.className = 'task-item';
+                
+                let statusClass = '';
+                if (task.status === 'SUCCESS') {
+                    statusClass = 'status-success';
+                } else if (task.status === 'FAILURE' || task.status === 'REVOKED') {
+                    statusClass = 'status-failure';
+                } else {
+                    statusClass = 'status-pending';
+                }
+                
+                taskElement.innerHTML = `
+                    <div><strong>Task ID:</strong> ${task.id}</div>
+                    <div><strong>Type:</strong> ${task.type}</div>
+                    <div><strong>Description:</strong> ${task.description}</div>
+                    <div><strong>Status:</strong> <span class="task-status ${statusClass}">${task.status}</span></div>
+                `;
+                
+                if (task.result !== null) {
+                    taskElement.innerHTML += `
+                        <div class="task-result">${JSON.stringify(task.result, null, 2)}</div>
+                    `;
+                }
+                
+                if (task.status === 'PENDING' || task.status === 'STARTED') {
+                    const actionsDiv = document.createElement('div');
+                    actionsDiv.className = 'task-actions';
+                    
+                    const revokeButton = document.createElement('button');
+                    revokeButton.textContent = 'Revoke Task';
+                    revokeButton.onclick = () => revokeTask(task.id);
+                    
+                    actionsDiv.appendChild(revokeButton);
+                    taskElement.appendChild(actionsDiv);
+                }
+                
+                container.appendChild(taskElement);
+            });
+        }
+        
+        // Initial render
+        renderTasks();
+    </script>
+</body>
+</html>

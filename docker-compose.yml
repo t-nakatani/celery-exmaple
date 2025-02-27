@@ -9,6 +9,18 @@ services:
       - PYTHONUNBUFFERED=1
     command: python app.py
 
+  api:
+    build: .
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+    environment:
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8000:8000"
+    command: uvicorn api:app --host 0.0.0.0 --port 8000 --reload
+
   worker:
     build: .
     volumes:
