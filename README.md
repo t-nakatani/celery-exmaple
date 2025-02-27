@@ -2,6 +2,8 @@
 
 This is a simple example of a Celery setup with Python 3.12, FastAPI, and Redis as the message broker.
 
+<img width="935" alt="image" src="https://github.com/user-attachments/assets/c47a2f9c-3955-4205-8b03-5a788578a01c" />
+
 ## Project Structure
 
 - `docker-compose.yml` - Docker Compose configuration
